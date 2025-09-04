@@ -100,3 +100,9 @@ def predict_price(user_input: HouseInput):
     processed_input = preprocess_input(user_input.dict())
     prediction = model.predict(processed_input)
     return {"predicted_price_lacs": float(prediction[0])}
+
+
+@app.get("/")  # This is the root endpoint
+def read_root():
+    return {"message": "Welcome to House Price Prediction API"}
+
