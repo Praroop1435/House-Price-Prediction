@@ -1,127 +1,156 @@
 import streamlit as st
-import pandas as pd
-import tensorflow as tf
+import requests
+import folium
+from streamlit_folium import st_folium
 
-# Load model
-model = tf.keras.models.load_model("house_price_model.h5")
+# ==================== PAGE CONFIG ====================
+st.set_page_config(page_title="House Price Prediction", layout="wide")
 
-# Encoding maps
-city_map = {
-    'Chennai': 0, 'Pune': 1, 'Ludhiana': 2, 'Jodhpur': 3, 'Jaipur': 4, 'Durgapur': 5,
-    'Coimbatore': 6, 'Bilaspur': 7, 'New Delhi': 8, 'Ranchi': 9, 'Warangal': 10,
-    'Bangalore': 11, 'Nagpur': 12, 'Lucknow': 13, 'Silchar': 14, 'Dehradun': 15,
-    'Noida': 16, 'Gaya': 17, 'Jamshedpur': 18, 'Ahmedabad': 19, 'Hyderabad': 20,
-    'Faridabad': 21, 'Amritsar': 22, 'Kolkata': 23, 'Dwarka': 24, 'Visakhapatnam': 25,
-    'Bhopal': 26, 'Indore': 27, 'Haridwar': 28, 'Mysore': 29, 'Patna': 30, 'Raipur': 31,
-    'Vijayawada': 32, 'Trivandrum': 33, 'Kochi': 34, 'Surat': 35, 'Gurgaon': 36,
-    'Mangalore': 37, 'Cuttack': 38, 'Bhubaneswar': 39, 'Guwahati': 40, 'Mumbai': 41
+# ==================== STYLING ====================
+st.markdown(
+    """
+    <style>
+        .main-title { text-align:center; color:#4B0082; font-size:40px; font-weight:800; }
+        .stButton>button {
+            background:#4B0082; color:#fff; padding:0.75em 2em; border-radius:12px; border:none;
+            font-size:18px; font-weight:700;
+        }
+        .stButton>button:hover { background:#5a00a3; color:#fff; }
+        .prediction-box {
+            background:#4B0082; color:#fff; padding:20px; border-radius:12px; text-align:center;
+            font-size:22px; font-weight:800;
+        }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
+st.markdown("<div class='main-title'>🏠 House Price Prediction</div>", unsafe_allow_html=True)
+
+# ==================== CONSTANTS ====================
+SWAP_LAT_LON_FOR_MODEL = True  # keep True unless retrained with corrected LAT/LON
+
+# India bounds
+MIN_LAT, MAX_LAT = 6.0, 38.0
+MIN_LON, MAX_LON = 68.0, 98.0
+
+# Default city coordinates
+city_coords = {
+    "Bangalore": (12.9716, 77.5946),
+    "Chennai": (13.0827, 80.2707),
+    "Ghaziabad": (28.6692, 77.4538),
+    "Jaipur": (26.9124, 75.7873),
+    "Kolkata": (22.5726, 88.3639),
+    "Lalitpur": (24.6869, 78.4183),
+    "Maharashtra": (19.7515, 75.7139),
+    "Mumbai": (19.0760, 72.8777),
+    "Noida": (28.5355, 77.3910),
+    "Other": (22.9734, 78.6569),  # India center
+    "Pune": (18.5204, 73.8567),
 }
 
-state_map = {
-    'Tamil Nadu': 0, 'Maharashtra': 1, 'Punjab': 2, 'Rajasthan': 3, 'West Bengal': 4,
-    'Chhattisgarh': 5, 'Delhi': 6, 'Jharkhand': 7, 'Telangana': 8, 'Karnataka': 9,
-    'Uttar Pradesh': 10, 'Assam': 11, 'Uttarakhand': 12, 'Bihar': 13, 'Gujarat': 14,
-    'Haryana': 15, 'Andhra Pradesh': 16, 'Madhya Pradesh': 17, 'Kerala': 18, 'Odisha': 19
-}
+# ==================== INPUTS ====================
+st.subheader("🏡 Property Details")
+col1, col2, col3 = st.columns(3)
 
-property_map = {"Apartment": 0.0, "Independent House": 1.0, "Villa": 2.0}
-furnished_map = {"Unfurnished": 0.0, "Semi-furnished": 1.0, "Furnished": 2.0}
-transport_map = {"Low": 0.0, "Medium": 1.0, "High": 2.0}
-facing_map = {"North": 0, "East": 1, "South": 2, "West": 3}
-owner_map = {"Owner": 2, "Builder": 1, "Agent": 0}
-yesno_map = {"No": 0.0, "Yes": 1.0}
+with col1:
+    UNDER_CONSTRUCTION = st.selectbox("Under Construction", ["No", "Yes"], index=0)
+    RERA = st.selectbox("RERA Registered", ["No", "Yes"], index=1)
+    BHK_NO = st.number_input("Number of BHK", min_value=1, max_value=10, value=3)
+    SQUARE_FT = st.number_input("Area in Square Feet", min_value=100, max_value=10000, value=1000)
 
-# Preprocessing wrapper
-def preprocess_input(raw_data):
-    processed = pd.DataFrame([{
-        "City": city_map[raw_data["City"]],
-        "State": state_map[raw_data["State"]],
-        "Locality": int(raw_data["Locality"].split("_")[1]),
-        "Property_Type": property_map[raw_data["Property_Type"]],
-        "BHK": raw_data["BHK"],
-        "Size_in_SqFt": raw_data["Size_in_SqFt"],
-        "Price_per_SqFt": raw_data["Price_per_SqFt"],
-        "Year_Built": raw_data["Year_Built"],
-        "Furnished_Status": furnished_map[raw_data["Furnished_Status"]],
-        "Floor_No": raw_data["Floor_No"],
-        "Total_Floors": raw_data["Total_Floors"],
-        "Age_of_Property": raw_data["Age_of_Property"],
-        "Nearby_Schools": raw_data["Nearby_Schools"],
-        "Nearby_Hospitals": raw_data["Nearby_Hospitals"],
-        "Public_Transport_Accessibility": transport_map[raw_data["Public_Transport_Accessibility"]],
-        "Parking_Space": yesno_map[raw_data["Parking_Space"]],
-        "Security": yesno_map[raw_data["Security"]],
-        "Facing": facing_map[raw_data["Facing"]],
-        "Owner_Type": owner_map[raw_data["Owner_Type"]],
-        "Is_Ready_to_Move": 1 if raw_data["Availability_Status"] == "Ready to Move" else 0,
-        "Clubhouse": 1 if "Clubhouse" in raw_data["Amenities"] else 0,
-        "Garden": 1 if "Garden" in raw_data["Amenities"] else 0,
-        "Gym": 1 if "Gym" in raw_data["Amenities"] else 0,
-        "Playground": 1 if "Playground" in raw_data["Amenities"] else 0,
-        "Pool": 1 if "Pool" in raw_data["Amenities"] else 0,
-    }])
-    return processed
+with col2:
+    BATHROOM = st.number_input("Number of Bathrooms", min_value=1, max_value=10, value=2)
+    FURNISHING = st.selectbox("Furnishing", ["Unfurnished", "Semi-Furnished", "Furnished"])
+    AGE = st.slider("Property Age (Years)", 0, 30, 5)
+    FLOOR = st.number_input("Floor Number", min_value=0, max_value=50, value=2)
 
+with col3:
+    PARKING = st.selectbox("Car Parking", ["No", "Yes"], index=1)
+    READY_TO_MOVE = st.selectbox("Ready to Move", ["No", "Yes"], index=1)
+    RESALE = st.selectbox("Resale Property", ["No", "Yes"], index=1)
+    city = st.selectbox("City", list(city_coords.keys()))
+    seller_type = st.selectbox("Seller Type", ["Builder", "Dealer", "Owner"])
 
-# ---------------- UI ---------------- #
-st.set_page_config(page_title="🏠 Housing Price Prediction", layout="wide")
-st.title("🏡 Housing Price Prediction Dashboard")
+# ==================== LOCATION SELECTION ====================
+st.subheader("📍 Location (select a city or click on the map)")
 
-with st.sidebar:
-    st.header("🔧 Input Features")
-    state = st.selectbox("State", list(state_map.keys()))
-    city = st.selectbox("City", list(city_map.keys()))
-    locality = st.text_input("Locality (e.g., Locality_84)", "Locality_84")
-    property_type = st.selectbox("Property Type", list(property_map.keys()))
-    bhk = st.number_input("BHK", 1, 10, 2)
-    size = st.number_input("Size in SqFt", 200, 10000, 1500)
-    price_sqft = st.number_input("Price per SqFt (Lakhs)", 0.01, 1.0, 0.12)
-    year_built = st.number_input("Year Built", 1950, 2025, 2010)
-    furnished = st.selectbox("Furnished Status", list(furnished_map.keys()))
-    floor_no = st.number_input("Floor Number", 0, 50, 5)
-    total_floors = st.number_input("Total Floors", 1, 100, 10)
-    age = st.number_input("Age of Property (Years)", 0, 100, 12)
-    schools = st.number_input("Nearby Schools", 0, 20, 8)
-    hospitals = st.number_input("Nearby Hospitals", 0, 20, 3)
-    transport = st.selectbox("Public Transport Accessibility", list(transport_map.keys()))
-    parking = st.radio("Parking Space", ["Yes", "No"])
-    security = st.radio("Security", ["Yes", "No"])
-    facing = st.selectbox("Facing", list(facing_map.keys()))
-    owner_type = st.selectbox("Owner Type", list(owner_map.keys()))
-    availability = st.radio("Availability", ["Ready to Move", "Under Construction"])
-    amenities = st.multiselect("Amenities", ["Clubhouse", "Garden", "Gym", "Playground", "Pool"])
+# Session state init
+if "lat" not in st.session_state or "lon" not in st.session_state:
+    st.session_state.lat, st.session_state.lon = city_coords[city]
+if "last_city" not in st.session_state:
+    st.session_state.last_city = city
 
-if st.button("🚀 Predict Price"):
-    raw_input = {
-        "City": city,
-        "State": state,
-        "Locality": locality,
-        "Property_Type": property_type,
-        "BHK": bhk,
-        "Size_in_SqFt": size,
-        "Price_per_SqFt": price_sqft,
-        "Year_Built": year_built,
-        "Furnished_Status": furnished,
-        "Floor_No": floor_no,
-        "Total_Floors": total_floors,
-        "Age_of_Property": age,
-        "Nearby_Schools": schools,
-        "Nearby_Hospitals": hospitals,
-        "Public_Transport_Accessibility": transport,
-        "Parking_Space": parking,
-        "Security": security,
-        "Facing": facing,
-        "Owner_Type": owner_type,
-        "Availability_Status": availability,
-        "Amenities": amenities
+# Update coords when city changes
+if city != st.session_state.last_city:
+    st.session_state.lat, st.session_state.lon = city_coords[city]
+    st.session_state.last_city = city
+
+# Clamp to India bounds
+st.session_state.lat = float(min(MAX_LAT, max(MIN_LAT, st.session_state.lat)))
+st.session_state.lon = float(min(MAX_LON, max(MIN_LON, st.session_state.lon)))
+
+# Build map
+m = folium.Map(location=[st.session_state.lat, st.session_state.lon], zoom_start=10)
+folium.Marker([st.session_state.lat, st.session_state.lon], popup=f"{city}").add_to(m)
+
+# Render map and capture clicks
+map_click = st_folium(m, width=750, height=520)
+
+if map_click and map_click.get("last_clicked"):
+    clicked_lat = float(map_click["last_clicked"]["lat"])
+    clicked_lon = float(map_click["last_clicked"]["lng"])
+    st.session_state.lat = float(min(MAX_LAT, max(MIN_LAT, clicked_lat)))
+    st.session_state.lon = float(min(MAX_LON, max(MIN_LON, clicked_lon)))
+    st.rerun()
+
+st.success(f"📍 Final Location: Latitude = {st.session_state.lat:.6f}, Longitude = {st.session_state.lon:.6f}")
+
+# ==================== PREDICT ====================
+predict_clicked = st.button("🔮 Predict Price", use_container_width=True)
+
+if predict_clicked:
+    if SWAP_LAT_LON_FOR_MODEL:
+        model_longitude = st.session_state.lat   # swapped
+        model_latitude  = st.session_state.lon   # swapped
+    else:
+        model_longitude = st.session_state.lon
+        model_latitude  = st.session_state.lat
+
+    payload = {
+        "UNDER_CONSTRUCTION": 1 if UNDER_CONSTRUCTION == "Yes" else 0,
+        "RERA": 1 if RERA == "Yes" else 0,
+        "BHK_NO": int(BHK_NO),
+        "SQUARE_FT": int(SQUARE_FT),
+        "BATHROOM": int(BATHROOM),
+        "FURNISHING": FURNISHING,
+        "AGE": int(AGE),
+        "FLOOR": int(FLOOR),
+        "PARKING": 1 if PARKING == "Yes" else 0,
+        "READY_TO_MOVE": 1 if READY_TO_MOVE == "Yes" else 0,
+        "RESALE": 1 if RESALE == "Yes" else 0,
+        "LONGITUDE": model_longitude,
+        "LATITUDE": model_latitude,
+        "city": city,
+        "seller_type": seller_type,
     }
 
-    processed = preprocess_input(raw_input)
-    prediction = model.predict(processed)[0][0]
+    try:
+        resp = requests.post("http://127.0.0.1:8000/predict", json=payload, timeout=20)
+        resp.raise_for_status()
+        data = resp.json()
 
-    # ---- Results Section ---- #
-    st.subheader("📊 Results")
-    col1, col2 = st.columns(2)
+        raw_price = float(data.get("predicted_price_lacs", 0.0))
+        safe_price = max(raw_price, 0.25)  # clamp to minimum
 
-    with col1:
-        st.metric(" Predicted Price", f"₹ {prediction:,.2f} Lakhs")
+        if raw_price < 0:
+            st.warning("Model returned a negative value. Displaying a clamped non-negative price. "
+                       "Consider retraining with corrected LAT/LON or a log-transformed target.")
+
+        st.markdown(
+            f"<div class='prediction-box'>Predicted Price: {safe_price:.2f} Lacs</div>",
+            unsafe_allow_html=True,
+        )
+
+    except requests.exceptions.RequestException as e:
+        st.error(f"Error contacting prediction API: {e}")

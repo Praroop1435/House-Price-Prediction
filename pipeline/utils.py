@@ -1,30 +1,38 @@
-# utils.py
-import matplotlib.pyplot as plt
-import numpy as np
+import pandas as pd
 
-def plot_market_comparison(df, city_encoded, size_in_sqft, predicted_price, selected_city):
-    """
-    Plots the market comparison between city average price and predicted price.
-    """
-    # Compute city average price per sqft
-    city_avg_per_sqft = df[df["City_encoded"] == city_encoded]["Price_per_SqFt"].mean()
+COLUMNS = [
+    'UNDER_CONSTRUCTION','RERA','BHK_NO.','SQUARE_FT','READY_TO_MOVE','RESALE',
+    'LONGITUDE','LATITUDE',
+    'Bangalore','Chennai','Ghaziabad','Jaipur','Kolkata','Lalitpur','Maharashtra','Mumbai','Noida','Other','Pune',
+    'Builder','Dealer','Owner'
+]
 
-    if not np.isnan(city_avg_per_sqft):
-        city_avg_price = city_avg_per_sqft * size_in_sqft
+def preprocess_input(user_input: dict, scaler):
+    row = {
+        'UNDER_CONSTRUCTION': user_input.get('UNDER_CONSTRUCTION', 0),
+        'RERA': user_input.get('RERA', 1),
+        'BHK_NO.': user_input.get('BHK_NO', 3),
+        'SQUARE_FT': user_input.get('SQUARE_FT', 1000),
+        'READY_TO_MOVE': user_input.get('READY_TO_MOVE', 1),
+        'RESALE': user_input.get('RESALE', 1),
+        'LONGITUDE': user_input.get('LONGITUDE', 12.9716),
+        'LATITUDE': user_input.get('LATITUDE', 77.5946)
+    }
 
-        fig, ax = plt.subplots(figsize=(8, 4))
+    # Initialize cities and seller types
+    for col in COLUMNS[8:19]:
+        row[col] = 0
+    for col in COLUMNS[19:]:
+        row[col] = 0
 
-        # City average bar
-        ax.barh([selected_city], [city_avg_price],
-                color="skyblue", alpha=0.7, label="Avg City Price")
+    # One-hot encode city
+    city = user_input.get('city', 'Bangalore')
+    row[city if city in COLUMNS[8:19] else 'Other'] = 1
 
-        # Predicted price line
-        ax.axvline(predicted_price, color="red", linestyle="--", linewidth=2, label="Predicted Price")
+    # One-hot encode seller
+    seller = user_input.get('seller_type', 'Builder')
+    row[seller if seller in COLUMNS[19:] else 'Owner'] = 1
 
-        ax.set_xlabel("Price (Lakhs)")
-        ax.set_title("Market Comparison")
-        ax.legend()
-
-        return fig
-    else:
-        return None
+    df = pd.DataFrame([row], columns=COLUMNS)
+    df_scaled = scaler.transform(df)
+    return df_scaled
