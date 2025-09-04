@@ -8,8 +8,19 @@ from fastapi.middleware.cors import CORSMiddleware
 # ------------------------------
 # Load model and scaler
 # ------------------------------
-MODEL_PATH = "Backend/house_price_model.pkl"
-SCALER_PATH = "Backend/scaler.pkl"
+import os
+import joblib
+
+BASE_DIR = os.path.dirname(__file__)  # path of backend.py
+MODEL_PATH = os.path.join(BASE_DIR, "house_price_model.pkl")
+model = joblib.load(MODEL_PATH)
+import os
+import joblib
+
+BASE_DIR = os.path.dirname(__file__)  # path of backend.py
+MODEL_PATH = os.path.join(BASE_DIR, "scaler.pkl")
+model = joblib.load(MODEL_PATH)
+
 
 model = joblib.load(MODEL_PATH)
 scaler = joblib.load(SCALER_PATH)
