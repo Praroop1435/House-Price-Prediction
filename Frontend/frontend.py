@@ -136,9 +136,11 @@ if predict_clicked:
     }
 
     try:
-        resp = requests.post("http://127.0.0.1:8000/predict", json=payload, timeout=20)
+        url = "https://house-price-prediction-idry.onrender.com/predict"
+        resp = requests.post(url, json=payload, timeout=20)
         resp.raise_for_status()
         data = resp.json()
+
 
         raw_price = float(data.get("predicted_price_lacs", 0.0))
         safe_price = max(raw_price, 0.25)  # clamp to minimum
