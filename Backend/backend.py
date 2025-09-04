@@ -18,8 +18,8 @@ import os
 import joblib
 
 BASE_DIR = os.path.dirname(__file__)  # path of backend.py
-MODEL_PATH = os.path.join(BASE_DIR, "scaler.pkl")
-model = joblib.load(MODEL_PATH)
+SCALER_PATH = os.path.join(BASE_DIR, "scaler.pkl")
+model = joblib.load(SCALER_PATH)
 
 
 model = joblib.load(MODEL_PATH)
